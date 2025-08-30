@@ -1227,7 +1227,7 @@ def showScreen2():
     draw_carrots()
     
     draw_spike()
-
+    #making changes
     now = time.time()
     if now - last_spike_time < cooldown:
         cd = cooldown - int(now - last_spike_time)
