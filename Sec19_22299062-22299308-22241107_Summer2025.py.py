@@ -1227,7 +1227,7 @@ def showScreen2():
     draw_carrots()
     
     draw_spike()
-    #making changes
+
     now = time.time()
     if now - last_spike_time < cooldown:
         cd = cooldown - int(now - last_spike_time)
@@ -1256,5 +1256,721 @@ def main():
     glutMouseFunc(mouseListener2)
     glutIdleFunc(idle2)
     glutMainLoop()
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+from OpenGL.GL import *
+from OpenGL.GLUT import *
+from OpenGL.GLU import *
+import random
+import math
+import time
+
+# Game state
+current_state = "menu"  # "menu", "game", "level2", "level3"
+
+# Teleport variables
+teleport_count3 = 3  # Player can teleport 3 times
+teleport_cooldown3 = 0  # Cooldown to prevent spamming
+teleport_cooldown_duration3 = 1.0  # 1 second cooldown
+
+# Shield variables
+shield_active3 = False
+shield_duration3 = 3.0  # Shield lasts 3 seconds
+shield_start_time3 = 0
+shield_count3 = 3  # Player can use shield 3 times
+shield_cooldown3 = 0
+shield_cooldown_duration3 = 5.0  # 5 second cooldown between uses
+
+# Game state variables
+plyr_lif3, gm_scr3, bulets_mised3, gm_ovr3 = 10, 0, 0, False  # Start with 5 lives
+plyr_pos3, gun_angl3, plyr_radus3 = [0, 0, 0], 0, 20
+cmra_pos3 = (0, 500, 500) 
+
+# Enemy variables
+enmys_to_respawn3=[]
+enmys3 = []  # Empty list - no moving enemies
+enmy_cnt3 =3 # No moving enemies
+tree_enemies3 = []  # Stable tree enemies (obstacles)
+shooter_enemies3 = []  # Shooter enemies that move and shoot
+enmy_radus3 = 30
+enmy_spd3 = 0.1
+fireball_cooldown3 = 0
+fireball_rate3 = 20  # Rocks every 3 seconds
+shooter_move_speed3 = 0.5
+shooter_direction3 = 1  # 1 for right, -1 for left
+
+# Grid variables
+GRID_LENGTH3 = 600
+tile_siz3 = GRID_LENGTH3 / 4
+brdr_thic3 = 100
+outr3 = GRID_LENGTH3 + brdr_thic3
+
+# Bullet variables
+bulets3 = []
+fireballs3 = []  # Enemy rocks
+bulet_spd3 = 7
+fireball_spd3 = 0.5 
+bulet_siz3 = 15
+fireball_siz3 = 15
+
+quadric3 = None 
+
+def teleport_player3():
+    global plyr_pos3, teleport_count3, teleport_cooldown3
+    
+    if teleport_count3 > 0 and teleport_cooldown3 <= 0:
+        # Find a safe position away from enemies and trees
+        safe_position_found = False
+        attempts = 0
+        max_attempts = 20
+        
+        while not safe_position_found and attempts < max_attempts:
+            # Generate random position
+            new_x = random.uniform(-GRID_LENGTH3/2 + 100, GRID_LENGTH3/2 - 100)
+            new_y = random.uniform(-GRID_LENGTH3/2 + 100, GRID_LENGTH3/2 - 100)
+            
+            # Check if position is safe (not too close to enemies or trees)
+            safe = True
+            
+            # Check distance from moving enemies
+            for enmy in enmys3:
+                dx = new_x - enmy['pos'][0]
+                dy = new_y - enmy['pos'][1]
+                dist = math.sqrt(dx*dx + dy*dy)
+                if dist < 150:  # Minimum safe distance from enemies
+                    safe = False
+                    break
+            
+            # Check distance from trees if still safe
+            if safe:
+                for tree in tree_enemies3:
+                    dx = new_x - tree['pos'][0]
+                    dy = new_y - tree['pos'][1]
+                    dist = math.sqrt(dx*dx + dy*dy)
+                    if dist < 100:  # Minimum safe distance from trees
+                        safe = False
+                        break
+            
+            # Check distance from shooter enemies if still safe
+            if safe:
+                for shooter in shooter_enemies3:
+                    dx = new_x - shooter['pos'][0]
+                    dy = new_y - shooter['pos'][1]
+                    dist = math.sqrt(dx*dx + dy*dy)
+                    if dist < 200:  # Minimum safe distance from shooters
+                        safe = False
+                        break
+            
+            if safe:
+                plyr_pos3[0] = new_x
+                plyr_pos3[1] = new_y
+                teleport_count3 -= 1
+                teleport_cooldown3 = teleport_cooldown_duration3
+                safe_position_found = True
+            
+            attempts += 1
+
+def activate_shield3():
+    global shield_active3, shield_start_time3, shield_count3, shield_cooldown3
+    
+    if shield_count3 > 0 and shield_cooldown3 <= 0 and not shield_active3:
+        shield_active3 = True
+        shield_start_time3 = time.time()
+        shield_count3 -= 1
+        shield_cooldown3 = shield_cooldown_duration3
+
+
+def init_enmys3():
+    global enmys3, tree_enemies3, shooter_enemies3
+    
+    enmys3 = []  
+    tree_enemies3 = []
+    shooter_enemies3 = []
+    
+    #moving
+    for _ in range(enmy_cnt3):
+        angl = random.uniform(0, 2*math.pi)
+        distnc = random.uniform(GRID_LENGTH3/2, GRID_LENGTH3)
+        x = distnc*math.cos(angl)
+        y = distnc*math.sin(angl)
+        enmys3.append({
+            'pos': [x, y, 0],
+            'siz': enmy_radus3
+        })
+    # Create stable tree enemies (obstacles)
+    for _ in range(3):  # 5 tree obstacles
+        x = random.uniform(-GRID_LENGTH3/2 + 50, GRID_LENGTH3/2 - 50)
+        y = random.uniform(-GRID_LENGTH3/2 + 50, GRID_LENGTH3/2 - 50)
+        tree_enemies3.append({
+            'pos': [x, y, 0],
+            'siz': enmy_radus3
+        })
+    
+    # Side shooters (left and right) - further away
+    shooter_enemies3.append({
+        'pos': [-GRID_LENGTH3 -90, 0, 0],  # Further away
+        'siz': enmy_radus3,
+        'type': 'side'
+    })
+    
+    shooter_enemies3.append({
+        'pos': [GRID_LENGTH3+90, 0, 0],  # Further away
+        'siz': enmy_radus3,
+        'type': 'side'
+    })
+
+def init_gm3():
+    global plyr_lif3, gm_scr3, bulets_mised3, gm_ovr3, fireball_cooldown3
+    global plyr_pos3, gun_angl3, cmra_pos3, shooter_direction3, teleport_count3, teleport_cooldown3
+    global shield_active3, shield_count3, shield_cooldown3
+    
+    plyr_lif3, gm_scr3, bulets_mised3, gm_ovr3 = 10, 0, 0, False  # Start with 5 lives
+    plyr_pos3, gun_angl3 = [0, 0, 0], 0
+    fireball_cooldown3 = 0
+    shooter_direction3 = 1  # Reset movement direction
+    teleport_count3 = 3  # Reset teleport count
+    teleport_cooldown3 = 0 
+    
+    shield_active3 = False  # Reset shield
+    shield_count3 = 3      # Reset shield count
+    shield_cooldown3 = 0 
+    cmra_pos3 = (0, -500, 300)
+    
+    bulets3.clear()
+    fireballs3.clear()
+    init_enmys3()
+
+def draw_text3(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, 1000, 0, 800)
+    
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+
+    glColor3f(1, 1, 1)
+    glRasterPos2f(x, y)
+    for ch in text:
+        glutBitmapCharacter(font, ord(ch))
+
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+def draw_menu():
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glLoadIdentity()
+    
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, 1000, 0, 800)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+
+    # Draw menu background
+    glBegin(GL_QUADS)
+    glColor3f(0.2, 0.2, 0.4)
+    glVertex2f(0, 0)
+    glVertex2f(1000, 0)
+    glVertex2f(1000, 800)
+    glVertex2f(0, 800)
+    glEnd()
+    
+    # Draw menu text
+    draw_text3(400, 600, "Hero of Worlds", GLUT_BITMAP_TIMES_ROMAN_24)
+    draw_text3(420, 500, "Select Level:", GLUT_BITMAP_HELVETICA_18)
+    draw_text3(450, 400, "1 - Fire Level", GLUT_BITMAP_HELVETICA_18)
+    draw_text3(450, 350, "2 - Ice Level (Coming Soon)", GLUT_BITMAP_HELVETICA_18)
+    draw_text3(450, 300, "3 - Earth World", GLUT_BITMAP_HELVETICA_18)
+    draw_text3(400, 200, "Press '1, 2, or 3' to start your mission", GLUT_BITMAP_HELVETICA_18)
+    
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+    glPopMatrix()
+
+    glutSwapBuffers()
+
+def draw_plyr3():
+    glPushMatrix()
+    glTranslatef(plyr_pos3[0], plyr_pos3[1], plyr_pos3[2])
+    if gm_ovr3:
+        glRotatef(90, 1, 0, 0)
+
+    # Draw shield if active (semi-transparent green sphere)
+    if shield_active3:
+        glColor4f(0.0, 1.0, 0.0, 0.3)  # Green with transparency
+        glutSolidSphere(plyr_radus3 + 10, 16, 16)  # Slightly larger than player
+
+    # Earth World player colors - green and brown
+    glColor3f(0.1, 0.5, 0.1)  # Dark green for earth world
+        
+    glPushMatrix()
+    glTranslatef(0, 0, 20)
+    glScalef(20, 20, 25)
+    glutSolidCube(1)
+    glPopMatrix()
+    
+    glColor3f(0.4, 0.2, 0.0)  # Brown for earth world
+        
+    glPushMatrix()
+    glTranslatef(0, 0, 45)
+    glutSolidSphere(12, 12, 12)
+    glPopMatrix()
+    
+    glPushMatrix()
+    glRotatef(gun_angl3, 0, 0, 1)
+    
+    glColor3f(0.3, 0.3, 0.3)  # Gray gun
+        
+    glPushMatrix()
+    glTranslatef(15, 0, 25)  
+    glScalef(10, 6, 6)  
+    glutSolidCube(1)
+    glPopMatrix()
+    
+    glColor3f(0.0, 0.6, 0.6)  # Cyan for earth world gun barrel
+        
+    glPushMatrix()
+    glTranslatef(30, 0, 25)  
+    glScalef(18, 4, 4)  
+    glutSolidCube(1)
+    glPopMatrix()
+    glPopMatrix()
+    glPopMatrix()
+
+def draw_enmys3():
+    # Draw moving enemies - Earth monsters (rock-like)
+    for enmy in enmys3:
+        glPushMatrix()
+        glTranslatef(enmy['pos'][0], enmy['pos'][1], enmy['pos'][2])
+        glColor3f(0.4, 0.3, 0.2)  # Brown rock color
+        glutSolidSphere(enmy_radus3, 20, 20)
+        
+        # Add rock-like texture with smaller spheres
+        glColor3f(0.3, 0.2, 0.1)
+        for i in range(8):
+            glPushMatrix()
+            glRotatef(i * 45, 0, 0, 1)
+            glTranslatef(enmy_radus3 * 0.8, 0, 0)
+            glutSolidSphere(enmy_radus3 * 0.3, 8, 8)
+            glPopMatrix()
+        glPopMatrix()
+    # Draw stable tree enemies (obstacles)
+    for tree in tree_enemies3:
+        glPushMatrix()
+        glTranslatef(tree['pos'][0], tree['pos'][1], tree['pos'][2])
+        
+        # Draw tree trunk (brown)
+        glColor3f(0.4, 0.2, 0.1)
+        glPushMatrix()
+        glTranslatef(0, 0, 15)
+        glScalef(8, 8, 30)
+        glutSolidCube(1)
+        glPopMatrix()
+        
+        # Draw tree foliage (green)
+        glColor3f(0.1, 0.5, 0.2)
+        glPushMatrix()
+        glTranslatef(0, 0, 45)
+        glutSolidSphere(20, 12, 12)
+        glPopMatrix()
+        
+        glPopMatrix()
+    
+    # Draw shooter enemies
+    for shooter in shooter_enemies3:
+        glPushMatrix()
+        glTranslatef(shooter['pos'][0], shooter['pos'][1], shooter['pos'][2])
+        
+        # Shooter base (gray)
+        glColor3f(0.5, 0.5, 0.5)
+        glutSolidSphere(enmy_radus3, 20, 20)
+        
+        # Shooter cannon (dark gray)
+        glColor3f(0.3, 0.3, 0.3)
+        glPushMatrix()
+        if shooter['type'] == 'top':
+            glRotatef(90, 1, 0, 0)  # Point downward
+        elif shooter['pos'][0] < 0:  # Left side
+            glRotatef(90, 0, 1, 0)  # Point right
+        else:  # Right side
+            glRotatef(-90, 0, 1, 0)  # Point left
+        glTranslatef(0, 0, enmy_radus3 + 10)
+        glScalef(8, 8, 20)
+        glutSolidCube(1)
+        glPopMatrix()
+        
+        glPopMatrix()
+
+def draw_bulets3():
+    # Draw player earth bullets (rocks)
+    for bulet in bulets3:
+        glPushMatrix()
+        glTranslatef(bulet['pos'][0], bulet['pos'][1], bulet['pos'][2])
+        glColor3f(0.5, 0.4, 0.3)  # Rock color
+        glutSolidSphere(bulet_siz3/2, 10, 10)
+        glPopMatrix()
+    
+    # Draw enemy earth projectiles
+    for fireball in fireballs3:
+        glPushMatrix()
+        glTranslatef(fireball['pos'][0], fireball['pos'][1], fireball['pos'][2])
+        glColor3f(1, 1, 1)  # Lighter rock color
+        glutSolidSphere(fireball_siz3/2, 12, 12)
+        glPopMatrix()
+
+def draw_floor3():
+    # Single solid color floor that contrasts with player
+    glBegin(GL_QUADS)
+    glColor3f(0.7, 0.5, 0.3)  # Light brown/tan color that contrasts with green player
+    glVertex3f(-GRID_LENGTH3, -GRID_LENGTH3, 0)
+    glVertex3f(GRID_LENGTH3, -GRID_LENGTH3, 0)
+    glVertex3f(GRID_LENGTH3, GRID_LENGTH3, 0)
+    glVertex3f(-GRID_LENGTH3, GRID_LENGTH3, 0)
+    glEnd()
+
+def shoot_rock3():
+    global fireball_cooldown3
+    current_time = time.time()
+    
+    # Shoot from all shooter enemies
+    for shooter in shooter_enemies3:
+        # Determine shoot direction based on shooter position
+        if shooter['pos'][0] < 0:  # Left side shooter
+            # Shoot toward right
+            direction = [1, 0, 0]
+        else:  # Right side shooter
+            # Shoot toward left
+            direction = [-1, 0, 0]
+        
+        fireballs3.append({
+            'pos': shooter['pos'][:],
+            'dir': direction,
+            'speed': fireball_spd3,
+            'shooter_type': shooter['type']
+        })
+    
+    fireball_cooldown3 = fireball_rate3
+
+def update_shooters3():
+    global shooter_direction3
+    
+    # Update all shooter positions (move side to side or up/down)
+    for shooter in shooter_enemies3:
+        if shooter['type'] == 'side':
+            # Side shooters move vertically
+            if shooter['pos'][0] < 0:  # Left side shooter
+                shooter['pos'][1] += shooter_move_speed3 * shooter_direction3
+                
+                # Reverse vertical direction at top/bottom edges
+                if shooter['pos'][1] > GRID_LENGTH3/2 - 50:
+                    shooter_direction3 = -1
+                elif shooter['pos'][1] < -GRID_LENGTH3/2 + 50:
+                    shooter_direction3 = 1
+                    
+            else:  # Right side shooter
+                shooter['pos'][1] += shooter_move_speed3 * shooter_direction3
+                
+                # Reverse vertical direction at top/bottom edges
+                if shooter['pos'][1] > GRID_LENGTH3/2 - 50:
+                    shooter_direction3 = -1
+                elif shooter['pos'][1] < -GRID_LENGTH3/2 + 50:
+                    shooter_direction3 = 1
+
+def updt_fireballs3():
+    global fireballs3, plyr_lif3, gm_ovr3
+    
+    fireballs_to_remove = []
+    
+    for i, fireball in enumerate(fireballs3):
+        # Move rock projectile
+        fireball['pos'][0] += fireball['dir'][0] * fireball['speed']
+        fireball['pos'][1] += fireball['dir'][1] * fireball['speed']
+        
+        # Remove if out of bounds
+        if (abs(fireball['pos'][0]) > outr3 or 
+            abs(fireball['pos'][1]) > outr3 or 
+            fireball['pos'][2] > 500):
+            fireballs_to_remove.append(i)
+            continue
+
+        dx = fireball['pos'][0] - plyr_pos3[0]
+        dy = fireball['pos'][1] - plyr_pos3[1]
+        dz = fireball['pos'][2] - plyr_pos3[2]
+        distnc = math.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if not shield_active3 and distnc < plyr_radus3 + fireball_siz3/2:
+                fireballs_to_remove.append(i)
+                plyr_lif3 -= 1
+                if plyr_lif3 <= 0:
+                    gm_ovr3 = True
+    
+    # Remove rocks that hit or went out of bounds
+    for i in sorted(fireballs_to_remove, reverse=True):
+        if i < len(fireballs3):
+            fireballs3.pop(i)
+
+def updt_bulets3():
+    global bulets3, bulets_mised3, gm_scr3, gm_ovr3, plyr_lif3, enmys_to_respawn3
+    enmys_to_respawn3=[]
+    bulets_to_remove = []
+    shooters_to_remove = []
+    
+    for i, bulet in enumerate(bulets3):
+        bulet['pos'][0] += bulet['dir'][0] * bulet_spd3
+        bulet['pos'][1] += bulet['dir'][1] * bulet_spd3
+        bulet['pos'][2] += bulet['dir'][2] * bulet_spd3
+        
+        if abs(bulet['pos'][0]) > outr3 or abs(bulet['pos'][1]) > outr3 or bulet['pos'][2] > 500:
+            bulets_to_remove.append(i)
+            bulets_mised3 += 1
+            if bulets_mised3 >= 30:
+                gm_ovr3 = True
+            continue
+        # Check collision with moving enemies
+        for j, enmy in enumerate(enmys3):
+            dx = bulet['pos'][0] - enmy['pos'][0]
+            dy = bulet['pos'][1] - enmy['pos'][1]
+            dz = bulet['pos'][2] - enmy['pos'][2]
+            distnc = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+            if distnc < enmy_radus3 + bulet_siz3/2:
+                bulets_to_remove.append(i)
+                enmys_to_respawn3.append(j)  # Mark enemy for respawn
+                gm_scr3 += 1
+                break
+        # Check collision with tree enemies (obstacles)
+        for j, tree in enumerate(tree_enemies3):
+            dx = bulet['pos'][0] - tree['pos'][0]
+            dy = bulet['pos'][1] - tree['pos'][1]
+            dz = bulet['pos'][2] - tree['pos'][2]
+            distnc = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+            if distnc < enmy_radus3 + bulet_siz3/2:
+                bulets_to_remove.append(i)
+                break
+        
+        # Check collision with shooter enemies (gain life)
+        for j, shooter in enumerate(shooter_enemies3):
+            dx = bulet['pos'][0] - shooter['pos'][0]
+            dy = bulet['pos'][1] - shooter['pos'][1]
+            dz = bulet['pos'][2] - shooter['pos'][2]
+            distnc = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+            if distnc < enmy_radus3 + bulet_siz3/2:
+                bulets_to_remove.append(i)
+                shooters_to_remove.append(j)
+                gm_scr3= gm_scr3+ 1 
+                break
+    # Respawn moving enemies that were hit
+    for j in set(enmys_to_respawn3):
+        if j < len(enmys3):
+            angl = random.uniform(0, 2*math.pi)
+            distnc = random.uniform(GRID_LENGTH3/2, GRID_LENGTH3)
+            enmys3[j]['pos'][0] = distnc * math.cos(angl)
+            enmys3[j]['pos'][1] = distnc * math.sin(angl)
+            enmys3[j]['pos'][2] = 0
+    # Remove bullets that hit
+    for i in sorted(set(bulets_to_remove), reverse=True):
+        if i < len(bulets3):
+            bulets3.pop(i)
+    
+    # Remove hit shooters (they respawn after a delay)
+    # For now, let's keep them permanent as requested
+
+def updt_enmys3():
+    global plyr_lif3, gm_ovr3, fireball_cooldown3
+    
+    if gm_ovr3:
+        return
+    
+    # Update moving enemies (like in fire game)
+    for enmy in enmys3:
+        dx = plyr_pos3[0] - enmy['pos'][0]
+        dy = plyr_pos3[1] - enmy['pos'][1]
+        dist_squared = dx*dx + dy*dy
+        
+        if dist_squared > 0:
+            inv_dist = 1.0 / (dist_squared ** 0.5)
+            enmy['pos'][0] += (dx * inv_dist) * enmy_spd3
+            enmy['pos'][1] += (dy * inv_dist) * enmy_spd3
+            
+        # Check collision with player
+        if not shield_active3 and dist_squared < (plyr_radus3 + enmy_radus3) ** 2:
+            if dist_squared < (plyr_radus3 + enmy_radus3) ** 2:
+                plyr_lif3 -= 1
+                enmy['pos'][0] = random.uniform(-GRID_LENGTH3/2, GRID_LENGTH3/2)
+                enmy['pos'][1] = random.uniform(-GRID_LENGTH3/2, GRID_LENGTH3/2)
+                enmy['pos'][2] = 0
+                
+                if plyr_lif3 <= 0:
+                    gm_ovr3 = True
+    
+    # Check collision with tree enemies (obstacles)
+    for tree in tree_enemies3:
+        dx = tree['pos'][0] - plyr_pos3[0]
+        dy = tree['pos'][1] - plyr_pos3[1]
+        dist_squared = dx*dx + dy*dy
+        
+        if not shield_active3 and dist_squared < (plyr_radus3 + enmy_radus3) ** 2:
+            plyr_lif3 -= 1
+            # Respawn player at a random safe position
+            plyr_pos3[0] = random.uniform(-GRID_LENGTH3/2 + 100, GRID_LENGTH3/2 - 100)
+            plyr_pos3[1] = random.uniform(-GRID_LENGTH3/2 + 100, GRID_LENGTH3/2 - 100)
+            
+            if plyr_lif3 <= 0:
+                gm_ovr3 = True
+            break  # Only process one collision per frame
+    
+    # Update shooter enemies
+    update_shooters3()
+    
+    # Update rock cooldown and shooting
+    fireball_cooldown3 -= 0.016  # Assuming ~60 FPS
+    if fireball_cooldown3 <= 0:
+        shoot_rock3()
+
+
+def fire_bulet3():
+    if gm_ovr3:
+        return
+    angl_rad = math.radians(gun_angl3)
+    bulets3.append({
+        'pos': [plyr_pos3[0] + 40 * math.cos(angl_rad), 
+                plyr_pos3[1] + 40 * math.sin(angl_rad), 
+                plyr_pos3[2] + 20],
+        'dir': [math.cos(angl_rad), math.sin(angl_rad), 0]
+    })
+
+def setup_cmra3():
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluPerspective(120, 1.25, 0.1, 1500)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    cam_x, cam_y, cam_z = cmra_pos3
+    gluLookAt(cam_x, cam_y, cam_z, 0, 0, 0, 0, 0, 1)
+                        
+def keyboardListener3(key, x, y):
+    global plyr_pos3, gun_angl3, current_state
+    
+    key = key.decode('utf-8').lower()
+    
+    if current_state == "menu":
+        if key == '1':
+            # Fire level would go here
+            pass
+        elif key == '2':
+            # Ice level would go here
+            pass
+        elif key == '3':
+            current_state = "game"
+            init_gm3()
+        return
+    
+    # Game controls
+    if key == 'w':
+        plyr_pos3[0] += 10 * math.cos(math.radians(gun_angl3))
+        plyr_pos3[1] += 10 * math.sin(math.radians(gun_angl3))
+    elif key == 's':
+        plyr_pos3[0] -= 10 * math.cos(math.radians(gun_angl3))
+        plyr_pos3[1] -= 10 * math.sin(math.radians(gun_angl3))
+    elif key == 'a':  
+        gun_angl3 = (gun_angl3 - 5) % 360
+    elif key == 'd':
+        gun_angl3 = (gun_angl3 + 5) % 360
+    elif key == 'r':
+        current_state = "menu"
+    elif key == 't':  # Teleport ability
+        teleport_player3()
+    elif key == 'h':  # Shield ability
+        activate_shield3()
+
+def specialKeyListener3(key, x, y):
+    global cmra_pos3
+    x, y, z = cmra_pos3
+    move_spd = 10
+    if key == GLUT_KEY_UP:
+        y -= move_spd
+    elif key == GLUT_KEY_DOWN:
+        y += move_spd
+    elif key == GLUT_KEY_LEFT:
+        x -= move_spd
+    elif key == GLUT_KEY_RIGHT:
+        x += move_spd
+    cmra_pos3 = (x, y, z)
+
+def mouseListener3(button, state, x, y):
+    if state == GLUT_DOWN and button == GLUT_LEFT_BUTTON:
+        fire_bulet3()
+
+def idle():
+    if current_state == "game":
+        updt_bulets3()
+        updt_fireballs3()
+        updt_enmys3()
+        # Update teleport cooldown
+        global teleport_cooldown3
+        if teleport_cooldown3 > 0:
+            teleport_cooldown3 -= 0.016 
+
+        # Update shield duration and cooldown
+        global shield_active3, shield_cooldown3
+        if shield_active3:
+            if time.time() - shield_start_time3 >= shield_duration3:
+                shield_active3 = False
+        if shield_cooldown3 > 0:
+            shield_cooldown3 -= 0.016
+            
+    glutPostRedisplay()
+
+def showScreen():
+    if current_state == "menu":
+        draw_menu()
+    elif current_state == "game":
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        glLoadIdentity()
+        glViewport(0, 0, 1000, 800)
+        setup_cmra3()
+        draw_floor3()
+        draw_plyr3()
+        draw_enmys3()
+        draw_bulets3()
+        draw_text3(10, 680, f"Life: {plyr_lif3}")
+        draw_text3(10, 650, f"Score: {gm_scr3}")
+        draw_text3(10, 620, f"Missed: {bulets_mised3}")
+        draw_text3(10, 590, f"Teleports: {teleport_count3} (Press T)")
+        draw_text3(10, 560, f"Shields: {shield_count3} (Press H)") 
+        glutSwapBuffers()
+
+def main():
+    global quadric3  
+    glutInit()
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
+    glutInitWindowSize(1000, 800)
+    glutInitWindowPosition(0, 0)
+    glutCreateWindow(b"Hero of Worlds - Earth Level")
+    quadric3 = gluNewQuadric()
+    
+    glutDisplayFunc(showScreen)
+    glutKeyboardFunc(keyboardListener3)
+    glutSpecialFunc(specialKeyListener3)
+    glutMouseFunc(mouseListener3)
+    glutIdleFunc(idle)
+    glutMainLoop()
+
 if __name__ == "__main__":
     main()
