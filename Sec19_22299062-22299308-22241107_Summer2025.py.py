@@ -625,3 +625,636 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+    from OpenGL.GL import *
+from OpenGL.GLUT import *
+from OpenGL.GLU import *
+import random
+import math
+import time
+from OpenGL.GLUT.fonts import GLUT_BITMAP_HELVETICA_18
+
+plyr_lif = 5#koita life player er
+gm_scr = 0#game score
+bulets_mised = 0#total missed bullet
+gm_ovr = False#game over track er jonno
+
+frozen_tiles = {}  # freezing 
+last_freeze_time = -1000
+freeze_count = 0
+max_freeze_count = 3
+
+plyr_pos = [0, 0, 0]
+gun_angl = 0
+plyr_radus = 20
+plyr_spd = 20  
+GRID_LENGTH = 600
+enmys =[]
+bulets =[]
+bulet_spd =10
+#boundary r grid er jonno
+tile_siz=GRID_LENGTH/4
+outr = GRID_LENGTH + 100
+quadric=None 
+spikes = []         
+last_spike_time=-9999  
+cooldown = 10        
+carrots = []    
+last_carrot_time =-9999
+pending_bullets = [] #bullet koita kore jabe 
+last_shoot_time = 0
+
+def init_enmys2():
+    global enmys
+    enmys = []
+    for _ in range(5):
+        angl = random.uniform(0, 2*math.pi)
+        distnc = random.uniform(GRID_LENGTH/2, GRID_LENGTH)
+        x = distnc * math.cos(angl)
+        y = distnc * math.sin(angl)
+        enmys.append({
+            'pos': [x, y, 0],
+            'siz': 30,
+            'Color': [random.random(), random.random(), random.random()],
+            'is_frozen': False,
+            'freeze_start_time': 0 
+        })
+
+def init_gm2():#pura game abar reset korar factors
+    global plyr_lif, gm_scr, bulets_mised, gm_ovr
+    global plyr_pos, gun_angl, cmra_Mode, cmra_prspctve, cmra_angl, cmra_heigt, cmra_pos
+    global auto_flw, spikes, last_spike_time, carrots, last_carrot_time, plyr_freeze, freeze_start_time
+    global frozen_tiles, last_freeze_time, freeze_count
+    plyr_lif = 5
+    gm_scr = 0
+    bulets_mised = 0
+    gm_ovr = False
+    plyr_pos = [0, 0, 0]
+    gun_angl = 0
+    cmra_Mode = "third_person"
+    cmra_prspctve = "default" 
+    cmra_angl = 0
+    cmra_heigt = 500
+    cmra_pos = (0, -500, 300)
+    auto_flw = False
+    bulets.clear()
+    spikes.clear()
+    carrots.clear()
+    frozen_tiles.clear()
+    last_spike_time = -1000
+    last_carrot_time = -1000
+    last_freeze_time = -1000
+    freeze_count = 0
+    plyr_freeze = False
+    freeze_start_time = 0
+    init_enmys2()
+
+def draw_text2(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, 1000, 0, 800)
+    
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    
+    glColor3f(1, 1, 1)
+    glRasterPos2f(x, y)
+    for ch in text:
+        glutBitmapCharacter(font, ord(ch))
+    
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+def draw_plyr2():
+    glPushMatrix()
+    glTranslatef(plyr_pos[0], plyr_pos[1], plyr_pos[2])
+    
+    glRotatef(gun_angl, 0, 0, 1)
+    
+    if gm_ovr:
+        glRotatef(90, 1, 0, 0)
+    glColor3f(0.0, 0.5, 0.0)  
+    glPushMatrix()
+    glTranslatef(0, 0, 48)  
+    glScalef(24, 16, 48)     
+    glutSolidCube(1)
+    glPopMatrix()
+
+    glPushMatrix()
+    glTranslatef(0, 0, 80)    
+    glColor3f(1, 0.8, 0.6)    
+    glutSolidSphere(12, 20, 20) 
+    glPopMatrix()
+    glColor3f(0.0, 0.3, 0.0)  
+    # Left leg
+    glPushMatrix()
+    glTranslatef(-6.4, 0, 16) 
+    glScalef(6.4, 6.4, 32)    
+    glutSolidCube(1)
+    glPopMatrix()
+    # Right leg
+    glPushMatrix()
+    glTranslatef(6.4, 0, 16)  
+    glScalef(6.4, 6.4, 32)    
+    glutSolidCube(1)
+    glPopMatrix()
+ 
+    glColor3f(0.3, 0.3, 0.3) 
+    glPushMatrix()
+    glTranslatef(16, 0, 60) 
+    glRotatef(90, 0, 1, 0) 
+    gluCylinder(gluNewQuadric(), 4, 4, 32, 10, 2) 
+    glPopMatrix()
+
+    glPopMatrix()
+    
+def draw_enmys2():
+  for enmy in enmys:
+    glPushMatrix() 
+    base_siz = enmy['siz']
+    glTranslatef(enmy['pos'][0], enmy['pos'][1], enmy['pos'][2] + base_siz)
+    if enmy['is_frozen']:
+            glColor3f(0.9,0.9, 0.9) 
+    else:
+            glColor3f(0.3,0.6, 1.0)  
+    gluSphere(gluNewQuadric(),base_siz, 20, 20)
+        # matha
+    head_siz=base_siz*0.6
+    glPushMatrix()
+    glTranslatef(0,0, base_siz + head_siz)
+    glColor3f(0.5,0.8,1.0)  
+    gluSphere(gluNewQuadric(), head_siz, 20, 20)
+    glPopMatrix() 
+    glPopMatrix() 
+
+def draw_bulets2():
+    for i in bulets:
+        glPushMatrix()  
+        glTranslatef(i['pos'][0], i['pos'][1], i['pos'][2])
+        glutSolidSphere(5, 12, 12)  
+        glPopMatrix() 
+
+def draw_carrots():
+    for carrot in carrots:
+        glPushMatrix()
+        glTranslatef(*carrot['pos'])
+        dx, dy, dz = carrot['dir'] #carrotthrow korar direction
+        length = math.sqrt(dx*dx + dy*dy + dz*dz)#len calculate kore direction er magnitude for diye
+        if length!=0: #direction non zero valid naki 
+            dx=dx/length
+            dy=dy/length#consistency bojai rakhe 
+            dz= dz/length
+        axis_x=-dy
+        axis_y=dx
+        axis_z=0
+        angle = math.degrees(math.acos(dz))    
+        glRotatef(angle, axis_x, axis_y, axis_z)
+        glColor3f(1.0, 0.5, 0.0)
+        gluCylinder(quadric, 8, 0.0, 40, 20, 2)
+        glPopMatrix()
+def draw_grid2():
+    global frozen_tiles
+    glBegin(GL_QUADS)
+    for i in range(-4, 4):
+        for j in range(-4, 4):
+            tile_key = (i, j)
+            color = None
+            if tile_key in frozen_tiles:
+                elapsed = time.time()-frozen_tiles[tile_key]['start_time']#aita check kore time thele kon tiles e dhukse and time kotokhon hoise dhukse 
+                state = frozen_tiles[tile_key]['state']#alhon position ki
+                if state == 'warning':
+                    if elapsed >= 1:# white hoye jabe 1 sec por 
+                        frozen_tiles[tile_key]['state'] = 'frozen'
+                        frozen_tiles[tile_key]['start_time'] = time.time()
+                        color = (1, 1, 1)
+                    if elapsed<1:#red 1 sec er jonno thakne 
+                        color = (1, 0, 0)
+                elif state == 'frozen':
+                    if elapsed >= 3:#3 sec por por abar onno jai ga
+                        color=None
+                        del frozen_tiles[tile_key]#akdom fresh start
+                    else:
+                        color = (1, 1, 1)
+            if color is None:#normal color ta dei
+                if (i + j) % 2 == 0:
+                    color = (0.4, 0.5, 0.8)
+                else:
+                    color = (0.3, 0.4, 0.7)
+            glColor3f(*color)
+            glVertex3f(i*tile_siz,j*tile_siz, 0)
+            glVertex3f((i+1)*tile_siz,j*tile_siz, 0)
+            glVertex3f((i+1)*tile_siz,(j+1)*tile_siz, 0)
+            glVertex3f(i*tile_siz, (j+1)*tile_siz, 0)
+    glEnd()
+    #purota hocche traingle er calculation
+    half = GRID_LENGTH
+    hill_h = 110
+    num_tri = 4
+    step = GRID_LENGTH * 2 / num_tri
+
+    glBegin(GL_TRIANGLES)
+    y = half
+    for k in range(num_tri):
+        x1 = -half +k * step
+        x2 = -half +(k+1) * step
+        glColor3f(0.0,0.0, 1.0)
+        glVertex3f(x1,y, 0)
+        glVertex3f(x2, y,0)
+        glVertex3f((x1 +x2)/2, y, hill_h)
+
+    y = -half
+    for k in range(num_tri):
+        x1 = -half +k * step
+        x2 = -half+ (k+1) * step
+        glColor3f(0.0, 0.0, 1.0)
+        glVertex3f(x1, y, 0)
+        glVertex3f(x2, y, 0)
+        glVertex3f((x1 + x2)/2, y, hill_h)
+    glEnd()
+
+    glBegin(GL_TRIANGLES)
+    x = -half
+    for k in range(num_tri):
+        y1 = -half + k * step
+        y2 = -half + (k+1) * step
+        glColor3f(0.0, 0.0, 1.0)
+        glVertex3f(x, y1, 0)
+        glVertex3f(x, y2, 0)
+        glVertex3f(x, (y1 + y2)/2, hill_h)
+
+    x = half
+    for k in range(num_tri):
+        y1 = -half +k*step
+        y2 = -half +(k+1)*step
+        glColor3f(0.0,0.0,1.0)
+        glVertex3f(x,y1, 0)
+        glVertex3f(x, y2, 0)
+        glVertex3f(x,(y1 + y2)/2, hill_h)
+    glEnd()
+  
+def enemy_free2():
+    global last_freeze_time, freeze_count, max_freeze_count
+    
+    now = time.time()
+    if now - last_freeze_time < 5 or gm_ovr or freeze_count >= max_freeze_count:
+        return #checks condituon 5 sec er kom r also 3 bar freez hoile game over
+    i = random.randint(-4, 3)
+    j = random.randint(-4, 3)
+    tile_key = (i, j)#konta randomly select korse 
+    if tile_key not in frozen_tiles:
+        frozen_tiles[tile_key] = {'state': 'warning', 'start_time': now}
+        last_freeze_time=now
+        freeze_count+=1#game over hoise nali
+
+def draw_spike():
+    for spike in spikes:
+        glPushMatrix()
+        glTranslatef(spike['x'], spike['y'], spike['z'])
+        glColor3f(0.5, 0.8, 1.0)
+        glRotatef(180, 1, 0, 0)
+        gluCylinder(quadric, 20 * spike['scale'], 0.0, 150 * spike['scale'], 20, 2)
+        glPopMatrix()
+
+def throw_spik():
+    global last_spike_time, spikes, gm_scr
+    now = time.time()
+    if now - last_spike_time < cooldown or gm_ovr:
+        return
+    if not enmys:
+        return
+    closest = None
+    min_dist_sq = float('inf')
+    for enmy in enmys: 
+        dx = enmy['pos'][0]-plyr_pos[0]#check kore player r enmy r distance
+        dy = enmy['pos'][1]-plyr_pos[1]
+        d_sq = dx*dx + dy*dy
+        if d_sq < min_dist_sq:
+            min_dist_sq = d_sq
+            closest = enmy#ber kore kake spike marte hobe
+    if closest is None:
+        return
+    offsets = [(-40, 0), (0, 0), (40, 0)]  
+    for ox,oy in offsets:
+        spawn_z=closest['pos'][2]+400.0 #dekhanor jonno je upor theke portese tai 400
+        spike ={ #aitar upor base kore spike koi felabe decide kore
+            'x':closest['pos'][0]+ox,
+            'y':closest['pos'][1]+oy,
+            'z':spawn_z,
+            'target':closest,
+            'spd':150,
+            'scale':1.0
+        }
+        spikes.append(spike)
+    last_spike_time = now
+
+def update_spikes2():
+    global spikes, gm_scr
+    if not spikes:
+        return
+    new_spikes = []
+    for spike in spikes:
+        spike['z'] -= spike['spd']*1/60#koto speed e porbe spike
+        if spike['z']<= 0:#niche chole achche akhon check korbo hit kore ki na 
+            target=spike['target']
+            dx =spike['x']-target['pos'][0]
+            dy = spike['y']-target['pos'][1]
+            dist = math.sqrt(dx*dx + dy*dy)
+            if dist < target['siz']: #akdom target e jai porse
+                gm_scr += 1
+                angl = random.uniform(0, 2*math.pi)
+                distnc = random.uniform(GRID_LENGTH/2, GRID_LENGTH)
+                target['pos'][0] =distnc*math.cos(angl)#new pos e emy chole jai
+                target['pos'][1] = distnc*math.sin(angl)
+                target['pos'][2] = 0
+        else:
+            new_spikes.append(spike)  
+    spikes=new_spikes 
+def shoot_carrot2():
+    global last_carrot_time, carrots
+    now =time.time()
+    if now-last_carrot_time<3 or gm_ovr or not enmys:
+        return
+    closest_enemy = None
+    min_dist_sq = float('inf')
+    for enemy in enmys:
+        dx = enemy['pos'][0]-plyr_pos[0]
+        dy = enemy['pos'][1]-plyr_pos[1]
+        dist_sq = dx*dx +dy*dy
+        if dist_sq < min_dist_sq:
+            min_dist_sq = dist_sq
+            closest_enemy = enemy
+    if closest_enemy is None:
+        return
+    dx = plyr_pos[0] - closest_enemy['pos'][0]
+    dy = plyr_pos[1] - closest_enemy['pos'][1]
+    dz = (plyr_pos[2] + plyr_radus) - (closest_enemy['pos'][2] + closest_enemy['siz'])
+    
+    length = math.sqrt(dx*dx + dy*dy + dz*dz)
+    if length > 0:
+        dx /= length
+        dy /= length
+        dz /= length
+        carrots.append({
+            'pos': [closest_enemy['pos'][0], closest_enemy['pos'][1]+10, closest_enemy['pos'][2] +45],
+            'dir': [dx, dy, dz],
+            'spd': 2
+        })
+        
+        last_carrot_time = now
+
+def update_carrots():
+    global carrots, plyr_lif, gm_ovr
+    
+    if not carrots:
+        return
+    
+    to_remove = []  # store carrot objects to remove
+    
+    for carrot in carrots:
+        carrot['pos'][0] += carrot['dir'][0] * carrot['spd']
+        carrot['pos'][1] += carrot['dir'][1] * carrot['spd']
+        carrot['pos'][2] += carrot['dir'][2] * carrot['spd']
+        if (abs(carrot['pos'][0]) > outr or abs(carrot['pos'][1]) > outr or 
+            carrot['pos'][2] > 500 or carrot['pos'][2] < 0):
+            to_remove.append(carrot)
+            continue
+        dx = carrot['pos'][0] - plyr_pos[0]
+        dy = carrot['pos'][1] - plyr_pos[1]
+        dz = carrot['pos'][2] - (plyr_pos[2] + plyr_radus)
+        dist = math.sqrt(dx*dx + dy*dy + dz*dz)     
+        if dist < plyr_radus:
+            plyr_lif -= 1
+            to_remove.append(carrot)
+            if plyr_lif <= 0:
+                gm_ovr = True
+
+    for carrot in to_remove:
+        if carrot in carrots:
+            carrots.remove(carrot)
+def updt_bulets2():
+    global bulets, enmys, gm_scr, bulets_mised, gm_ovr
+    new_bulets = []
+
+    for bulet in bulets:
+        bulet['pos'][0] += bulet['dir'][0] * bulet_spd
+        bulet['pos'][1] += bulet['dir'][1] * bulet_spd
+        bulet['pos'][2] += bulet['dir'][2] * bulet_spd
+        if abs(bulet['pos'][0]) > outr or abs(bulet['pos'][1]) > outr:
+            bulets_mised += 1#baire chole gese naki
+            if bulets_mised >= 10:
+                gm_ovr = True
+            continue  # Skip adding this bullet
+        hit = False
+        for enmy in enmys:
+            dx = bulet['pos'][0] - enmy['pos'][0]
+            dy = bulet['pos'][1] - enmy['pos'][1]
+            dist_xy_sq = dx*dx + dy*dy
+
+            if dist_xy_sq < enmy['siz']**2:  # bullet hits enemy
+                gm_scr += 1
+                angl = random.uniform(0, 2*math.pi)
+                distnc = random.uniform(GRID_LENGTH/2, GRID_LENGTH)
+                enmy['pos'][0] = distnc * math.cos(angl)
+                enmy['pos'][1] = distnc * math.sin(angl)
+                enmy['pos'][2] = 0
+                hit = True
+                break  # stop checking onno ememy
+        if not hit:
+            new_bulets.append(bulet) 
+    bulets = new_bulets 
+
+def updt_enmys2():
+    global plyr_lif, gm_ovr
+    if gm_ovr:
+        return
+    for enmy in enmys:
+        dx = plyr_pos[0] - enmy['pos'][0]
+        dy = plyr_pos[1] - enmy['pos'][1]
+        dist = math.sqrt(dx*dx + dy*dy)
+        if dist > 0:
+            enmy['pos'][0] += (dx / dist) * 0.1
+            enmy['pos'][1] += (dy / dist) * 0.1
+        if dist < (plyr_radus + enmy['siz']):
+            plyr_lif -= 1
+            # Reset enemy 
+            enmy['pos'][0] = random.uniform(-GRID_LENGTH/2, GRID_LENGTH/2)
+            enmy['pos'][1] = random.uniform(-GRID_LENGTH/2, GRID_LENGTH/2)
+            enmy['pos'][2] = 0
+            if plyr_lif <= 0:
+                gm_ovr = True
+
+def push_enemies2():
+    for enmy in enmys:#distance increase kore dei player er push press korar por
+        dx = enmy['pos'][0] - plyr_pos[0]
+        dy = enmy['pos'][1] - plyr_pos[1]
+        dist = math.sqrt(dx*dx + dy*dy)
+        if dist < (plyr_radus + enmy['siz'])*1.5:
+            if dist > 0:
+                push_strength = 200.0
+                enmy['pos'][0] += (dx / dist) * push_strength 
+                enmy['pos'][1] += (dy / dist) * push_strength
+
+def fire_bulet2():
+    global pending_bullets, last_shoot_time
+    if gm_ovr:
+        return
+    body_z = plyr_pos[2] + 60
+    offsets = [-15, 0, 15]
+    angl_rad = math.radians(gun_angl)
+    dir_x = math.cos(angl_rad)
+    dir_y = math.sin(angl_rad)
+    dir_z = 0
+    for ox in offsets:
+        perp_x = -math.sin(angl_rad) * ox
+        perp_y = math.cos(angl_rad) * ox
+        pending_bullets.append({
+            'pos': [plyr_pos[0] + perp_x, plyr_pos[1] + perp_y, body_z],
+            'dir': [dir_x, dir_y, dir_z],
+            'color': (1.0, 0.5, 0.0)
+        })
+
+def shoot_pattern2():
+    global pending_bullets, bulets, last_shoot_time
+    now = time.time()
+    if pending_bullets and now - last_shoot_time >= 0.2:
+        bulets.append(pending_bullets.pop(0))
+        last_shoot_time = now
+
+def setup_cmra2():
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluPerspective(120, 1.25, 0.1, 1500)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    cam_x, cam_y, cam_z = cmra_pos
+    gluLookAt(cam_x, cam_y, cam_z,
+              0, 0, 0, 
+              0, 0, 1)
+              
+def update_freeze_state():
+    global plyr_freeze, freeze_start_time
+    if plyr_freeze and time.time() - freeze_start_time >= 0:
+        plyr_freeze = False
+
+def keyboardListener2(key, x, y):
+    global plyr_pos, gun_angl, cmra_Mode, plyr_freeze
+    
+    current_tile_i = int(plyr_pos[0] // tile_siz)
+    current_tile_j = int(plyr_pos[1] // tile_siz)
+    is_on_frozen_tile = frozen_tiles.get((current_tile_i, current_tile_j), {}).get('state') == 'frozen'
+    
+    if not is_on_frozen_tile and not gm_ovr:
+        
+        new_x, new_y = plyr_pos[0], plyr_pos[1]
+        
+        if key == b'w':
+            new_x += plyr_spd * math.cos(math.radians(gun_angl))
+            new_y += plyr_spd * math.sin(math.radians(gun_angl))
+        elif key == b's':
+            new_x -= plyr_spd * math.cos(math.radians(gun_angl))
+            new_y -= plyr_spd * math.sin(math.radians(gun_angl))
+        
+        boundary = GRID_LENGTH
+        if -boundary <= new_x <= boundary and -boundary <= new_y <= boundary:
+            plyr_pos[0] = new_x
+            plyr_pos[1] = new_y
+
+    if not gm_ovr:
+        if key == b'a':  
+            gun_angl = (gun_angl - 10) % 360
+        elif key == b'd':
+            gun_angl = (gun_angl + 10) % 360
+        elif key == b'f':
+            throw_spik()
+        elif key == b'p':
+            push_enemies2()
+    
+    if key == b'r':
+        init_gm2()
+
+def specialKeyListener2(key, x, y):
+    global cmra_pos
+    if cmra_Mode == "third_person":
+        x, y, z = cmra_pos
+        move_spd = 10
+        if key == GLUT_KEY_UP:
+            y -= move_spd
+        elif key == GLUT_KEY_DOWN:
+            y += move_spd
+        elif key == GLUT_KEY_LEFT:
+            x -= move_spd
+        elif key == GLUT_KEY_RIGHT:
+            x += move_spd
+        
+        cmra_pos = (x, y, z)
+
+def mouseListener2(button, state, x, y):
+    global cmra_Mode, plyr_freeze
+    
+    if state == GLUT_DOWN and not gm_ovr:
+        if button == GLUT_LEFT_BUTTON:
+            fire_bulet2()
+
+def idle2():
+    if not gm_ovr:
+        updt_bulets2()
+        updt_enmys2()
+        update_spikes2()
+        update_carrots()
+        shoot_carrot2()
+        shoot_pattern2()
+        enemy_free2()
+    glutPostRedisplay()
+
+def showScreen2():
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glLoadIdentity()
+    glViewport(0, 0, 1000, 800)
+    setup_cmra2()
+    draw_grid2()
+    draw_plyr2()
+    draw_enmys2()
+    draw_bulets2()
+    draw_carrots()
+    
+    draw_spike()
+
+    now = time.time()
+    if now - last_spike_time < cooldown:
+        cd = cooldown - int(now - last_spike_time)
+        draw_text2(10, 590, f"Spike cooldown: {cd}s")
+    else:
+        draw_text2(10, 590, "Spike ready! (Press F)")
+    draw_text2(10, 560, f"Enemy freezes left: {max_freeze_count - freeze_count}")
+    draw_text2(10, 680, f"player life Remaning: {plyr_lif}")
+    draw_text2(10, 650, f"game score: {gm_scr}")
+    draw_text2(10, 620, f"player bullets missed: {bulets_mised}")
+    draw_text2(10, 530, f"press P for push")      
+    glutSwapBuffers()
+
+def main():
+    global quadric  
+    glutInit()
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
+    glutInitWindowSize(1000, 800)
+    glutInitWindowPosition(0, 0)
+    glutCreateWindow(b"ICE LAND")
+    quadric = gluNewQuadric()
+    init_gm2()
+    glutDisplayFunc(showScreen2)
+    glutKeyboardFunc(keyboardListener2)
+    glutSpecialFunc(specialKeyListener2)
+    glutMouseFunc(mouseListener2)
+    glutIdleFunc(idle2)
+    glutMainLoop()
+if __name__ == "__main__":
+    main()
